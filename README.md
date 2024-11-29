@@ -1,0 +1,1 @@
+# suitability_analyser_plugin
