@@ -244,8 +244,7 @@ class SuitabilityAnalyser:
                         mw_districts d
                     LEFT JOIN
                         roadway_block r ON ST_DWithin(r.geom, d.geom, %s)
-                    LEFT JOIN
-                        water_bodies w ON ST_DWithin(w.geom, d.geom, %s)
+                   
                     WHERE
                         d.district = %s
                         AND d.population_density {pop_density_operator} %s;
@@ -259,7 +258,8 @@ class SuitabilityAnalyser:
                 return []
         return []
 
-    
+    #  LEFT JOIN
+    #                     water_bodies w ON ST_DWithin(w.geom, d.geom, %s)
 
     def perform_analysis(self):
         """Perform analysis based on user inputs."""
