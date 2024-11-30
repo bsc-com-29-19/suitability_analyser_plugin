@@ -21,9 +21,18 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QVariant
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction,QTableWidgetItem
+from qgis.core  import (
+    QgsProject,
+    QgsVectorLayer,
+    QgsField,
+    QgsFeature,
+    QgsGeometry
+)
+
+import psycopg2
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -179,9 +188,157 @@ class SuitabilityAnalyser:
                 action)
             self.iface.removeToolBarIcon(action)
 
+    
+    def db_connection(self):
+
+    # """Establish a connection to the database."""
+
+        try:
+            conn = psycopg2.connect(
+                dbname="analysis",
+                user="postgres",
+                password="adminpassword",
+                host="localhost",
+                port="5432"
+            )
+            return conn
+        except Exception as e:
+            print(f"Error connecting to the database: {e}")
+            return None
+    
+
+    def fetch_boundaries(self):
+    # """Fetch district or administrative boundaries from the database."""
+        conn = self.db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = "SELECT district FROM mw_districts;"
+                cursor.execute(query)
+                boundaries = cursor.fetchall()
+                conn.close()
+                return [b[0] for b in boundaries]  # Extract names from tuples
+            except Exception as e:
+                print(f"Error fetching boundaries: {e}")
+                return []
+        return []
+    
+
+    def fetch_analysis_data(self, boundary, distance_from_roads, distance_from_water, pop_density, pop_density_operator):
+        """
+        Fetch suitability analysis data with spatial buffering.
+        """
+        conn = self.db_connection()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                query = f"""
+                    SELECT
+                        d.id AS district_id,
+                        d.district AS district_name,
+                        ST_Buffer(r.geom, %s) AS road_buffer,
+                        ST_Buffer(w.geom, %s) AS water_buffer,
+                        d.geom AS district_geom,
+                        d.population_density
+                    FROM
+                        mw_districts d
+                    LEFT JOIN
+                        roadway_block r ON ST_DWithin(r.geom, d.geom, %s)
+                    LEFT JOIN
+                        water_bodies w ON ST_DWithin(w.geom, d.geom, %s)
+                    WHERE
+                        d.district = %s
+                        AND d.population_density {pop_density_operator} %s;
+                """
+                cursor.execute(query, (distance_from_roads, distance_from_water, boundary, pop_density))
+                results = cursor.fetchall()
+                conn.close()
+                return results
+            except Exception as e:
+                print(f"Error fetching analysis data: {e}")
+                return []
+        return []
+
+    
+
+    def perform_analysis(self):
+        """Perform analysis based on user inputs."""
+        # Get user inputs
+        boundary = self.dlg.comboBoxBoundary.currentText()
+        distance_from_roads = self.dlg.doubleSpinBox_2.value()
+        distance_from_water = self.dlg.doubleSpinBox.value()
+        pop_density = self.dlg.sliderDensity_3.value()
+        pop_density_operator = (
+            ">=" if self.dlg.radioButtonGreater_2.isChecked() else
+            "<=" if self.dlg.radioButtonLess_2.isChecked() else "="
+        )
+
+        # buffer_distance = self.dlg.doubleSpinBoxBufferDistance.value()
+        
+        # Fetch analysis data
+        results = self.fetch_analysis_data(
+            boundary,
+            distance_from_roads,
+            distance_from_water,
+            pop_density,
+            pop_density_operator
+        )
+
+        # Check if no results were found
+        if not results:
+            self.iface.messageBar().pushMessage("No results found", level=2)  # Level 2 is a warning
+            return
+
+        # Create a new memory layer
+        layer = QgsVectorLayer("Point?crs=EPSG:4326", f"Suitability Analysis - {boundary}", "memory")  # Set layer title to the boundary
+        pr = layer.dataProvider()
+
+        # Add fields
+        pr.addAttributes([
+            QgsField("District", QVariant.String),
+            QgsField("RoadType", QVariant.String),
+            QgsField("PopDensity", QVariant.Double),
+            QgsField("DistanceRoad", QVariant.Double)
+        ])
+        layer.updateFields()
+
+        # Add features
+        features = []
+        for result in results:
+            # Extract geometry and attributes
+            district_name = result[1]
+            road_type = result[6]
+            pop_density = result[9]
+            distance_to_road = result[7]
+            geom = QgsGeometry.fromWkt(result[2])  # Ensure your data contains WKT geometries
+
+            # Create feature
+            feature = QgsFeature()
+            feature.setGeometry(geom)
+            feature.setAttributes([district_name, road_type, pop_density, distance_to_road])
+            features.append(feature)
+
+        # Add features to the layer
+        pr.addFeatures(features)
+        layer.updateExtents()
+
+        # Add the layer to QGIS
+        QgsProject.instance().addMapLayer(layer)
+        self.iface.messageBar().pushMessage(f"Analysis complete: Layer '{layer.name()}' added", level=1)  # Level 1 is info
+
+    def display_results_in_table(self, results):
+        """Display results in a QTableWidget."""
+        self.dlg.tableWidgetResults.setRowCount(len(results))
+        for row_idx, row_data in enumerate(results):
+            for col_idx, col_data in enumerate(row_data):
+                self.dlg.tableWidgetResults.setItem(
+                    row_idx, col_idx, QTableWidgetItem(str(col_data))
+                )
+
 
     def run(self):
-        """Run method that performs all the real work"""
+        """Run method that performs all the real work"""\
+        
 
         # Create the dialog with elements (after translation) and keep reference
         # Only create GUI ONCE in callback, so that it will only load when the plugin is started
@@ -189,12 +346,41 @@ class SuitabilityAnalyser:
             self.first_start = False
             self.dlg = SuitabilityAnalyserDialog()
 
+
+            # Connect the analysis button to the function
+            self.dlg.buttonRunAnalysis.clicked.connect(self.perform_analysis)
+
+    
+
+        boundaries = self.fetch_boundaries()
+
+        self.dlg.comboBoxBoundary.clear()
+        self.dlg.comboBoxBoundary.addItems(boundaries)
+
+
         # show the dialog
         self.dlg.show()
+
+
+        boundary = self.dlg.comboBoxBoundary.currentText()
+        distance_from_roads = self.dlg.doubleSpinBox_2.value()
+        distance_from_water = self.dlg.doubleSpinBox.value()
+        pop_density = self.dlg.sliderDensity_3.value()
+        pop_density_operator = (
+            ">=" if self.dlg.radioButtonGreater_2.isChecked() else
+            "<=" if self.dlg.radioButtonLess_2.isChecked() else "="
+)
+
         # Run the dialog event loop
         result = self.dlg.exec_()
+        results = self.fetch_analysis_data(boundary, distance_from_roads, distance_from_water, pop_density, pop_density_operator)
         # See if OK was pressed
+        # if result:
+        #     # Do something useful here - delete the line containing pass and
+        #     # substitute with your code.
+        #     pass
         if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+    # Display results in your GUI or export them
+            print("Results fetched:", results)
+        else:
+            print("No results found.")

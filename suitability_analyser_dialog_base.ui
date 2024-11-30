@@ -13,38 +13,10 @@
   <property name="windowTitle">
    <string>Suitability Analyser</string>
   </property>
-  <widget class="QComboBox" name="comboBoxTitle">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>10</y>
-     <width>191</width>
-     <height>22</height>
-    </rect>
-   </property>
-   <property name="toolTip">
-    <string>School Area Suitability, Shopping Mall, or Hospital</string>
-   </property>
-   <item>
-    <property name="text">
-     <string>School Area Suitability</string>
-    </property>
-   </item>
-   <item>
-    <property name="text">
-     <string>Shopping Mall</string>
-    </property>
-   </item>
-   <item>
-    <property name="text">
-     <string>Hospital</string>
-    </property>
-   </item>
-  </widget>
   <widget class="QComboBox" name="comboBoxBoundary">
    <property name="geometry">
     <rect>
-     <x>330</x>
+     <x>370</x>
      <y>120</y>
      <width>241</width>
      <height>22</height>
@@ -119,21 +91,30 @@
   <widget class="QDoubleSpinBox" name="doubleSpinBox">
    <property name="geometry">
     <rect>
-     <x>390</x>
+     <x>420</x>
      <y>50</y>
      <width>181</width>
      <height>22</height>
     </rect>
    </property>
+   <property name="decimals">
+    <number>4</number>
+   </property>
+   <property name="maximum">
+    <double>1000000.000000000000000</double>
+   </property>
   </widget>
   <widget class="QDoubleSpinBox" name="doubleSpinBox_2">
    <property name="geometry">
     <rect>
-     <x>390</x>
+     <x>420</x>
      <y>80</y>
      <width>181</width>
      <height>22</height>
     </rect>
+   </property>
+   <property name="maximum">
+    <double>1000000.000000000000000</double>
    </property>
   </widget>
   <widget class="QLabel" name="label_2">
@@ -260,6 +241,29 @@
    </property>
    <property name="text">
     <string>Population Density</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>10</y>
+     <width>161</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Title of Suitability Analysis</string>
+   </property>
+  </widget>
+  <widget class="QTextEdit" name="textEdit">
+   <property name="geometry">
+    <rect>
+     <x>270</x>
+     <y>10</y>
+     <width>331</width>
+     <height>21</height>
+    </rect>
    </property>
   </widget>
  </widget>
